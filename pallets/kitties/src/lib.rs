@@ -143,6 +143,8 @@ pub mod pallet {
 				created_date: time,
 			};
 
+			log::info!("time create kitty:{:?}", kitty.created_date);
+
 			// Check if the kitty does not already exist in our storage map
 			// dna: T::Hash -> can't use this method
 			// ensure!(!Kitties::<T>::contains_key(&kitty.dna), Error::<T>::DuplicateKitty);

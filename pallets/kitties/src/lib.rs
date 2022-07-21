@@ -55,7 +55,7 @@ pub mod pallet {
 		type Currency: Currency<Self::AccountId>;
 		type TimeProvider: UnixTime;
 		type DnaRandomness: Randomness<Self::Hash, Self::BlockNumber>;
-	
+
 		#[pallet::constant]
 		type KittyCapacity: Get<u32>;
 	}
@@ -114,6 +114,7 @@ pub mod pallet {
 		NoKitty,
 		NotOwner,
 		TransferToSelf,
+		Overflow,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -124,15 +125,27 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(0)]
-		pub fn create_kitty(origin: OriginFor<T>, dna: Vec<u8>) -> DispatchResult {
+		pub fn create_kitty(origin: OriginFor<T>) -> DispatchResult {
 			// Make sure the caller is from a signed origin
 			let owner = ensure_signed(origin)?;
-
-			let gender = Self::gen_gender(&dna)?;
-			let kitty = Kitty::<T> { dna: dna.clone(), price: 0, gender, owner: owner.clone() };
+			let collection = KittiesOwned::<T>::get(&owner);
+			let length: u32 = collection.len() as u32;
+			ensure!(length < T::KittyCapacity::get(), Error::<T>::TooManyOwned);
+			log::info!("total balance:{:?}", T::Currency::total_balance(&owner));
+			let time: u64 = T::TimeProvider::now().as_secs();
+			let dna = Self::gen_dna()?;
+			let gender = Self::gen_gender()?;
+			let kitty = Kitty::<T> {
+				dna: dna.clone(),
+				price: 0u32.into(),
+				gender,
+				owner: owner.clone(),
+				created_date: time,
+			};
 
 			// Check if the kitty does not already exist in our storage map
-			ensure!(!Kitties::<T>::contains_key(&kitty.dna), Error::<T>::DuplicateKitty);
+			// dna: T::Hash -> can't use this method
+			// ensure!(!Kitties::<T>::contains_key(&kitty.dna), Error::<T>::DuplicateKitty);
 
 			// Performs this operation first as it may fail
 			let current_id = KittyId::<T>::get();
@@ -142,7 +155,7 @@ pub mod pallet {
 			KittiesOwned::<T>::append(&owner, kitty.dna.clone());
 
 			// Write new kitty to storage
-			Kitties::<T>::insert(kitty.dna.clone(), kitty);
+			Kitties::<T>::insert(&dna, kitty);
 			KittyId::<T>::put(next_id);
 
 			// Deposit our "Created" event.
@@ -151,7 +164,7 @@ pub mod pallet {
 			Ok(())
 		}
 		#[pallet::weight(0)]
-		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, dna: Vec<u8>) -> DispatchResult {
+		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, dna: T::Hash) -> DispatchResult {
 			// Make sure the caller is from a signed origin
 			let from = ensure_signed(origin)?;
 			let mut kitty = Kitties::<T>::get(&dna).ok_or(Error::<T>::NoKitty)?;
@@ -183,12 +196,23 @@ pub mod pallet {
 	}
 }
 
-impl<T> Pallet<T> {
-	fn gen_gender(dna: &Vec<u8>) -> Result<Gender, Error<T>> {
-		let mut res = Gender::Female;
-		if dna.len() % 2 == 0 {
-			res = Gender::Male;
-		}
+impl<T: Config> Pallet<T> {
+	fn gen_gender() -> Result<Gender, Error<T>> {
+		let res = Gender::Female;
 		Ok(res)
+	}
+	fn get_and_increment_nonce() -> Vec<u8> {
+		let nonce = Nonce::<T>::get();
+		//Nonce::<T>::put(nonce.wrapping_add(1)); ->wrong
+		Nonce::<T>::put(nonce.wrapping_add(1));
+		nonce.encode()
+	}
+	fn gen_dna() -> Result<T::Hash, Error<T>> {
+		let nonce = Self::get_and_increment_nonce();
+
+		let (dna, _) = T::DnaRandomness::random(&nonce);
+
+		Self::deposit_event(Event::<T>::DnaGenerated { dna });
+		Ok(dna)
 	}
 }

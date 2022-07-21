@@ -19,7 +19,14 @@ use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_std::vec::Vec;
 pub type Id = u32;
+use frame_support::traits::Currency;
+use frame_support::traits::Get;
+use frame_support::traits::Randomness;
+use frame_support::traits::UnixTime;
 use sp_runtime::ArithmeticError;
+
+type BalanceOf<T> =
+	<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -28,10 +35,11 @@ pub mod pallet {
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	pub struct Kitty<T: Config> {
-		pub dna: Vec<u8>,
+		pub dna: T::Hash,
 		pub owner: T::AccountId,
-		pub price: u64,
+		pub price: BalanceOf<T>,
 		pub gender: Gender,
+		pub created_date: u64,
 	}
 	#[derive(Clone, Encode, Decode, PartialEq, Copy, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	pub enum Gender {
@@ -44,6 +52,12 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+		type Currency: Currency<Self::AccountId>;
+		type TimeProvider: UnixTime;
+		type DnaRandomness: Randomness<Self::Hash, Self::BlockNumber>;
+	
+		#[pallet::constant]
+		type KittyCapacity: Get<u32>;
 	}
 
 	#[pallet::pallet]
@@ -53,6 +67,11 @@ pub mod pallet {
 
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
+	// Increase nonce for generating new kitty dna
+	#[pallet::storage]
+	#[pallet::getter(fn nonce)]
+	pub(super) type Nonce<T: Config> = StorageValue<_, u32, ValueQuery>;
+
 	#[pallet::storage]
 	#[pallet::getter(fn kitty_id)]
 	pub type KittyId<T> = StorageValue<_, Id, ValueQuery>;
@@ -60,12 +79,12 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn get_kitty)]
 	pub(super) type Kitties<T: Config> =
-		StorageMap<_, Blake2_128Concat, Vec<u8>, Kitty<T>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, T::Hash, Kitty<T>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn kitty_owned)]
 	pub(super) type KittiesOwned<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::AccountId, Vec<Vec<u8>>, ValueQuery>;
+		StorageMap<_, Blake2_128Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -74,13 +93,16 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		/// A new kitty was successfully created.
 		Created {
-			kitty: Vec<u8>,
+			kitty: T::Hash,
 			owner: T::AccountId,
 		},
 		Transferred {
 			from: T::AccountId,
 			to: T::AccountId,
-			kitty: Vec<u8>,
+			kitty: T::Hash,
+		},
+		DnaGenerated {
+			dna: T::Hash,
 		},
 	}
 

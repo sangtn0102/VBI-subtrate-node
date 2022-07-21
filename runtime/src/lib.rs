@@ -276,8 +276,16 @@ impl pallet_demo::Config for Runtime {
 	type Event = Event;
 }
 
+parameter_types! {
+	pub const KittyCapacity: u32 = 5;
+}
+
 impl pallet_kitties::Config for Runtime {
 	type Event = Event;
+	type Currency = Balances;
+	type TimeProvider = pallet_timestamp::Pallet<Runtime>;
+	type KittyCapacity = KittyCapacity;
+	type DnaRandomness = RandomnessCollectiveFlip;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

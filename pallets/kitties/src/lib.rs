@@ -168,7 +168,7 @@ pub mod pallet {
 
 			// Deposit our "Created" event.
 			// Debugging
-			log::info!("Student {:?}", &kitty);
+			log::info!("Kitty {:?}", &kitty);
 			Self::deposit_event(Event::Created { kitty: dna, owner: owner.clone() });
 
 			Ok(())

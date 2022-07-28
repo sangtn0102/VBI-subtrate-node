@@ -28,14 +28,14 @@ type BalanceOf<T> =
 use sp_runtime::traits::Hash;
 
 use frame_support::traits::Randomness;
-use frame_support::dispatch::fmt::Debug;
+use frame_support::dispatch::fmt;
 
 use sp_runtime::SaturatedConversion;
 #[frame_support::pallet]
 pub mod pallet {
 
 	pub use super::*;
-	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
+	#[derive(Clone, Encode, Decode, PartialEq, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	pub struct Kitty<T: Config> {
 		pub dna: T::Hash,
@@ -44,6 +44,18 @@ pub mod pallet {
 		pub owner: T::AccountId,
 		pub created_date: <<T as Config>::KittyTime as Time>::Moment ,
 	}
+	impl<T: Config> fmt::Debug for Kitty<T> {
+		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+			f.debug_struct("Kitty")
+				.field("dna", &self.dna)
+				.field("owner", &self.owner)
+				.field("price", &self.price)
+				.field("gender", &self.gender)
+				.field("created_date", &self.created_date)
+				.finish()
+		}
+	}
+
 	#[derive(Clone, Encode, Decode, PartialEq, Copy, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 	pub enum Gender {
 		Male,
@@ -151,10 +163,12 @@ pub mod pallet {
 			// 	Ok(())
 			// })?;
 			// Write new kitty to storage
-			Kitties::<T>::insert(kitty.dna.clone(), kitty);
+			Kitties::<T>::insert(kitty.dna.clone(), kitty.clone());
 			KittyId::<T>::put(next_id);
 
 			// Deposit our "Created" event.
+			// Debugging
+			log::info!("Student {:?}", &kitty);
 			Self::deposit_event(Event::Created { kitty: dna, owner: owner.clone() });
 
 			Ok(())

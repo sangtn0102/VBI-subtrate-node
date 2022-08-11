@@ -1,74 +1,110 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use ink_lang as ink;
+use ink_prelude::string::String;
+use ink_prelude::vec::Vec;
 
 #[ink::contract]
 mod school {
+    use super::*;
+    use ink_storage::traits::SpreadAllocate;
+    use ink_storage::traits::{PackedLayout, SpreadLayout};
+    pub type Id = u32;
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    #[derive(
+        Debug, Copy, Clone, PartialEq, Eq, scale::Encode, scale::Decode, SpreadLayout, PackedLayout,
+    )]
+    #[cfg_attr(
+        feature = "std",
+        derive(::scale_info::TypeInfo, ::ink_storage::traits::StorageLayout)
+    )]
+    pub enum Role {
+        Admin,
+        Member,
+    }
+    #[derive(
+        Debug, Clone, PartialEq, Eq, scale::Encode, scale::Decode, SpreadLayout, PackedLayout,
+    )]
+    #[cfg_attr(
+        feature = "std",
+        derive(::scale_info::TypeInfo, ::ink_storage::traits::StorageLayout)
+    )]
+    pub struct Student {
+        pub name: String,
+        pub age: u32,
+        pub id: Id,
+        pub role: Role,
+        pub author: AccountId,
+    }
+
     #[ink(storage)]
+    #[derive(SpreadAllocate)]
     pub struct School {
-        /// Stores a single `bool` value on the storage.
-        value: bool,
+        list_students: ink_storage::Mapping<Id, Student>,
+        list_ids: Vec<Id>,
     }
 
     impl School {
-        /// Constructor that initializes the `bool` value to the given `init_value`.
         #[ink(constructor)]
-        pub fn new(init_value: bool) -> Self {
-            Self { value: init_value }
-        }
+        pub fn new(name: String, age: u32) -> Self {
+            ink_lang::utils::initialize_contract(|contract: &mut Self| {
+                let caller = Self::env().caller();
+                let admin = Student {
+                    name,
+                    age,
+                    id: 0,
+                    role: Role::Admin,
+                    author: caller,
+                };
 
-        /// Constructor that initializes the `bool` value to `false`.
-        ///
-        /// Constructors can delegate to other constructors.
-        #[ink(constructor)]
-        pub fn default() -> Self {
-            Self::new(Default::default())
+                contract.list_students.insert(&(admin.id), &admin);
+                contract.list_ids.push(0);
+            })
         }
-
-        /// A message that can be called on instantiated contracts.
-        /// This one flips the value of the stored `bool` from `true`
-        /// to `false` and vice versa.
         #[ink(message)]
-        pub fn flip(&mut self) {
-            self.value = !self.value;
+        pub fn get_student(&self, id: u32) -> Student {
+            self.list_students.get(&id).unwrap()
         }
-
-        /// Simply returns the current value of our `bool`.
         #[ink(message)]
-        pub fn get(&self) -> bool {
-            self.value
+        pub fn add_student(&mut self, name: String, age: u32, id: Id) {
+            let caller = Self::env().caller();
+            let student = Student {
+                name,
+                age,
+                id,
+                role: Role::Member,
+                author: caller,
+            };
+            self.list_students.insert(&id, &student);
+            self.list_ids.push(id);
         }
-    }
-
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
-    #[cfg(test)]
-    mod tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
-        use super::*;
-
-        /// Imports `ink_lang` so we can use `#[ink::test]`.
-        use ink_lang as ink;
-
-        /// We test if the default constructor does its job.
-        #[ink::test]
-        fn default_works() {
-            let school = School::default();
-            assert_eq!(school.get(), false);
+        #[ink(message)]
+        pub fn view_all(&self) -> Vec<Student> {
+            let ids = self.list_ids.clone();
+            let mut list_students: Vec<Student> = Vec::new();
+            for id in ids.iter() {
+                let student = self.get_student(*id);
+                list_students.push(student);
+            }
+            list_students
         }
 
-        /// We test a simple use case of our contract.
-        #[ink::test]
-        fn it_works() {
-            let mut school = School::new(false);
-            assert_eq!(school.get(), false);
-            school.flip();
-            assert_eq!(school.get(), true);
+        #[ink(message)]
+        pub fn remove_student(&mut self, id: Id) {
+            self.list_students.remove(id);
+            self.list_ids.retain(|&x| x != id)
+        }
+
+        #[ink(message)]
+        pub fn edit_student(&mut self, id: Id, name: String, age: u32) {
+            let mut student = self.get_student(id);
+            let caller = Self::env().caller();
+            student.name = name;
+            student.age = age;
+            student.author = caller;
+            self.remove_student(id);
+            self.list_students.insert(&id, &student);
+            self.list_ids.push(id);
         }
     }
 }
